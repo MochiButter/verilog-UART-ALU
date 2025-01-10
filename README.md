@@ -2,7 +2,7 @@
 A verilog UART-controlled ALU
 
 This project was based on 
-[verilog_template](https://github.com/sifferman/verilog_template/).
+[verilog_template](#acknowledgements).
 
 # Acknowledgements
 This project was based on 
