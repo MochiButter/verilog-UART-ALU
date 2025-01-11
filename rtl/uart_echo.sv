@@ -4,12 +4,10 @@ module uart_echo
   (input  [0:0] clk_i
   ,input  [0:0] reset_i
   ,input  [0:0] rx_data_i
-  ,input  [0:0] rx_ready_i
-  ,output [0:0] tx_data_o
-  ,output [0:0] tx_ready_o);
+  ,output [0:0] tx_data_o);
 
   wire [DataWidth - 1:0] echo_data_w;
-  wire [0:0] echo_valid_w;
+  wire [0:0] echo_valid_w, echo_ready_w;
   wire [0:0] rx_busy_w, rx_oe_w, rx_fe_w, tx_busy_w;
 
   uart_rx #(.DATA_WIDTH(DataWidth)) uart_rx_inst(
@@ -17,7 +15,7 @@ module uart_echo
     .rst(reset_i),
     .m_axis_tdata(echo_data_w),
     .m_axis_tvalid(echo_valid_w),
-    .m_axis_tready(rx_ready_i),
+    .m_axis_tready(echo_ready_w),
     .rxd(rx_data_i),
     .busy(rx_busy_w),
     .overrun_error(rx_oe_w),
@@ -25,13 +23,12 @@ module uart_echo
     .prescale(Prescale)
   );
 
-
   uart_tx #(.DATA_WIDTH(DataWidth)) uart_tx_inst(
     .clk(clk_i),
     .rst(reset_i),
     .s_axis_tdata(echo_data_w),
     .s_axis_tvalid(echo_valid_w),
-    .s_axis_tready(tx_ready_o),
+    .s_axis_tready(echo_ready_w),
     .txd(tx_data_o),
     .busy(tx_busy_w),
     .prescale(Prescale)
