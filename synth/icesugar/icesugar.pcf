@@ -1,0 +1,7 @@
+# For the iCESugar Board (iCE40UP5K-QFN48)
+# From https://github.com/wuxx/icesugar/blob/master/src/common/io.pcf
+
+set_io clk_12Mhz_i 35
+set_io rx_data_i    4
+set_io tx_data_o    6
+set_io reset_i     10

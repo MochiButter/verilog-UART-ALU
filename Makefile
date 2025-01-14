@@ -34,8 +34,8 @@ build/sim/$(SIM_TOP)/iverilog.vcd: $(SIM_TB) $(SIM_SRC)
 	cd build/sim/$(SIM_TOP); \
 	vvp iverilog/tb -fst
 
-lint: $(RTL_SRC)
-	verilator lint/verilator.vlt --lint-only -top $(RTL_TOP) $^ -Wall
+lint: $(RTL_SRC) $(YOSYS_DATDIR)/ice40/cells_sim.v
+	verilator lint/verilator.vlt -f tb/tb.f --lint-only --top $(RTL_TOP) $^ -Wall -DNO_ICE40_DEFAULT_ASSIGNMENTS
 
 build/synth/rtl.sv2v.v: $(RTL_SRC)
 	@mkdir -p build/synth
