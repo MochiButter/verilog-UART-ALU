@@ -2,7 +2,6 @@ yosys -import
 
 read_verilog -sv -icells build/synth/rtl.sv2v.v
 
-#ice40_opt
 synth_ice40 -top top
 
 write_verilog -noexpr -noattr -simple-lhs build/synth/ice40_synth.v
