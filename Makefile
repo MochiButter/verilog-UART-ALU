@@ -79,7 +79,7 @@ build/synth/ice40.json build/synth/ice40_synth.v: build/synth/rtl.sv2v.v synth/i
 	yosys -ql build/synth/ice40_synth.yslog -p 'tcl synth/icesugar/icesugar.tcl'
 
 build/synth/ice40.asc: build/synth/ice40.json synth/icesugar/icesugar.pcf
-	nextpnr-ice40 -l build/synth/ice40_pnr.log -q --up5k --package sg48 --json build/synth/ice40.json --pcf synth/icesugar/icesugar.pcf --asc build/synth/ice40.asc
+	nextpnr-ice40 -l build/synth/ice40_pnr.log -q --up5k --package sg48 --json build/synth/ice40.json --pre-pack synth/icesugar/nextpnr.py --pcf synth/icesugar/icesugar.pcf --asc build/synth/ice40.asc
 
 build/synth/ice40.bin: build/synth/ice40.asc
 	icepack $< $@
