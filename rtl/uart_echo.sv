@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module uart_echo
   #(parameter DataWidth = 8
    ,parameter Prescale = 16'b1)

@@ -4,4 +4,4 @@
 set_io clk_12Mhz_i 35
 set_io rx_data_i    4
 set_io tx_data_o    6
-set_io reset_i     10
+#set_io reset_ni    10

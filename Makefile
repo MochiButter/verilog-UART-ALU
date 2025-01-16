@@ -23,13 +23,13 @@ endif
 sim: include build/sim/$(SIM_TOP)/verilator.vcd build/sim/$(SIM_TOP)/iverilog.vcd
 
 build/sim/$(SIM_TOP)/verilator.vcd: $(SIM_TB) $(SIM_SRC)
-	mkdir -p build/sim/$(SIM_TOP)/verilator
+	@mkdir -p build/sim/$(SIM_TOP)/verilator
 	verilator lint/verilator.vlt -Mdir build/sim/$(SIM_TOP)/verilator $^ -f tb/tb.f --binary -Wno-fatal --top $(SIM_TOP)
 	cd build/sim/$(SIM_TOP); \
 	verilator/V$(SIM_TOP) +verilator+rand+reset+2
 
 build/sim/$(SIM_TOP)/iverilog.vcd: $(SIM_TB) $(SIM_SRC)
-	mkdir -p build/sim/$(SIM_TOP)/iverilog
+	@mkdir -p build/sim/$(SIM_TOP)/iverilog
 	iverilog -o build/sim/$(SIM_TOP)/iverilog/tb $^ -g2005-sv
 	cd build/sim/$(SIM_TOP); \
 	vvp iverilog/tb -fst
@@ -79,7 +79,7 @@ build/synth/ice40.json build/synth/ice40_synth.v: build/synth/rtl.sv2v.v synth/i
 	yosys -ql build/synth/ice40_synth.yslog -p 'tcl synth/icesugar/icesugar.tcl'
 
 build/synth/ice40.asc: build/synth/ice40.json synth/icesugar/icesugar.pcf
-	nextpnr-ice40 --up5k --package sg48 --json build/synth/ice40.json --pcf synth/icesugar/icesugar.pcf --asc build/synth/ice40.asc
+	nextpnr-ice40 -l build/synth/ice40_pnr.log -q --up5k --package sg48 --json build/synth/ice40.json --pcf synth/icesugar/icesugar.pcf --asc build/synth/ice40.asc
 
 build/synth/ice40.bin: build/synth/ice40.asc
 	icepack $< $@

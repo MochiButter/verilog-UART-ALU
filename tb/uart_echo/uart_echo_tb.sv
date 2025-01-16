@@ -25,11 +25,10 @@ module uart_echo_tb();
       clk_i = ~clk_i;
     end
   end
-  assign top_inst.pll_inst.PLLOUTCORE = clk_i;
-  
+  assign top_inst.pll_inst.PLLOUTGLOBAL = clk_i;
+
   top #() top_inst (
     .clk_12Mhz_i(clk_12Mhz_i),
-    .reset_i(reset_i),
     .rx_data_i(rx_data_i),
     .tx_data_o(tx_data_o)
   );
@@ -57,6 +56,13 @@ module uart_echo_tb();
   );
 `endif
 
+  task reset();
+  begin
+    reset_i = 1'b1;
+    repeat(2) @(negedge clk_i);
+    reset_i = 1'b0;
+  end
+  endtask
 
   int repeat_cnt = Prescale * 8;
   logic [9:0] data_l = '0;
@@ -88,14 +94,12 @@ module uart_echo_tb();
         end
         @(negedge clk_i);
       end
-      /*
       if(cnt < (repeat_cnt / 2)) begin
         $display("\033[0;31mSIM FAILED\033[0m");
         $display("[tx] Bad output at bit %d of data 0x%h", i, data_i);
         $display("[tx] Expected: %b, Actual: %b", data_l[i], tx_data_o);
         $finish();
       end
-      */
     end
   end
   endtask
@@ -108,16 +112,15 @@ module uart_echo_tb();
 `endif
   $dumpvars;
 
-    reset_i = 1'b1;
     rx_data_i = 1'b1;
-    repeat(2) @(negedge clk_i);
-    reset_i = 1'b0;
+
+    reset();
 
     for(int itervar_data = 0; itervar_data < (1 << DataWidth); itervar_data ++) begin
       send_byte(itervar_data[7:0]);
       check_byte(itervar_data[7:0]);
     end
-    
+
     $display("No bad outputs detected");
     $display("\033[0;32mSIM PASSED\033[0m");
     $finish();
