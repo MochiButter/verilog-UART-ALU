@@ -13,3 +13,4 @@
 -Werror-IMPLICIT
 -Werror-USERERROR
 -Werror-LATCH
+-Ithird_party/basejump_stl/bsg_misc

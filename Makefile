@@ -20,7 +20,7 @@ ifeq ("$(wildcard tb/$(SIM_MK)/$(SIM_MK).mk)", "")
 	@exit 1
 endif
 
-sim: include build/sim/$(SIM_TOP)/verilator.vcd build/sim/$(SIM_TOP)/iverilog.vcd
+sim: include build/sim/$(SIM_TOP)/verilator.vcd #build/sim/$(SIM_TOP)/iverilog.vcd
 
 build/sim/$(SIM_TOP)/verilator.vcd: $(SIM_TB) $(SIM_SRC)
 	@mkdir -p build/sim/$(SIM_TOP)/verilator
@@ -39,14 +39,14 @@ lint: $(wildcard rtl/*.sv) $(RTL_SRC) $(YOSYS_DATDIR)/ice40/cells_sim.v
 
 build/synth/rtl.sv2v.v: $(RTL_SRC)
 	@mkdir -p build/synth
-	sv2v $^ -w $@
+	sv2v $^ -w $@ -Ithird_party/basejump_stl/bsg_misc
 
 build/synth/sim.sv2v.v build/synth/generic_synth.v: $(SIM_SRC)
 	@mkdir -p build/synth
 	sv2v $(SIM_SRC) -w build/synth/sim.sv2v.v
 	yosys -p 'tcl synth/yosys_generic/yosys.tcl' -ql build/synth/generic_synth_v.yslog
 
-gls: include build/sim/$(SIM_TOP)_gls/verilator.vcd build/sim/$(SIM_TOP)_gls/iverilog.vcd
+gls: include build/sim/$(SIM_TOP)_gls/verilator.vcd #build/sim/$(SIM_TOP)_gls/iverilog.vcd
 
 build/sim/$(SIM_TOP)_gls/verilator.vcd: $(SIM_TB) build/synth/generic_synth.v
 	@mkdir -p build/sim/$(SIM_TOP)_gls/verilator
