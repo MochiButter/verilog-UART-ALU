@@ -12,7 +12,7 @@ module uart_alu
   ,output [0:0] valid_o);
 
   typedef enum {
-    Idle, Opcode, Reserved, LengthLSB, LengthMSB, Echo, Done
+    Idle, Opcode, Reserved, LengthLSB, LengthMSB, Echo, EchoWait
   } alu_state_e;
 
   alu_state_e alu_state_d, alu_state_q;
@@ -21,7 +21,15 @@ module uart_alu
     alu_state_d = alu_state_q;
     unique case (alu_state_q) 
       Idle:      alu_state_d = valid_i ? Opcode : Idle;
-      Opcode:    alu_state_d = valid_i ? Reserved : Opcode;
+      Opcode: begin
+        // TODO make sure to add other valid opcodes
+        case (opcode_q)
+          8'hec: begin
+            alu_state_d = valid_i ? Reserved : Opcode;
+          end
+          default: alu_state_d = Idle;
+        endcase
+      end
       Reserved:  alu_state_d = valid_i ? LengthLSB : Reserved;
       LengthLSB: alu_state_d = valid_i ? LengthMSB : LengthLSB;
       LengthMSB: begin
@@ -33,15 +41,19 @@ module uart_alu
         end
       end
       Echo: begin
-        if (byte_count_q == (length_q)) begin
-          alu_state_d = Done;
+        if (ready_i & (byte_count_q == length_q)) begin
+          alu_state_d = Idle;
+        end else if (ready_i) begin
+          alu_state_d = EchoWait;
         end else if (valid_i) begin
           alu_state_d = Echo;
         end
       end
-      Done: begin
-        if (ready_i) begin
+      EchoWait: begin
+        if (byte_count_q == length_q) begin
           alu_state_d = Idle;
+        end else if (valid_i) begin
+          alu_state_d = Echo;
         end
       end
       default:
@@ -57,19 +69,24 @@ module uart_alu
     end
   end
 
-  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, data_en_l, data_res_l;
+  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, cnt_res_l, data_en_l, data_res_l;
   always_comb begin
     opcode_en_l = (alu_state_q == Idle) & valid_i;
     lsb_en_l = (alu_state_q == Reserved) & valid_i;
     msb_en_l = (alu_state_q == LengthLSB) & valid_i;
-    data_en_l = ((alu_state_q == LengthMSB) | (alu_state_q == Echo)) & valid_i;
-    data_res_l = (alu_state_q == Done) & ready_i;
+    // TODO make it cleaner and add other opcodes
+    cnt_res_l = ((alu_state_q == Echo) & ready_i & (byte_count_q == length_q)) | 
+      ((alu_state_q == EchoWait) & (byte_count_q == length_q)) | 
+      ((alu_state_q == Opcode) & ((opcode_q != 8'hec) | (0) | (0)));
+    data_en_l = ((alu_state_q == LengthMSB) | (alu_state_q == Echo)) | (alu_state_q == EchoWait) & valid_i;
+    data_res_l = cnt_res_l;
   end
 
   logic [0:0] valid_l, ready_l;
   always_comb begin
-    valid_l = (alu_state_q == Echo) | (alu_state_q == Done);
-    ready_l = (alu_state_q != Done);
+    valid_l = (alu_state_q == Echo);
+    // TODO fix for when calcs are being done
+    ready_l = 1'b1;
   end
 
   logic [7:0] opcode_q;
@@ -106,7 +123,7 @@ module uart_alu
     end
   end
   always_ff @(posedge clk_i) begin
-    if (reset_i) begin
+    if (reset_i | cnt_res_l) begin
       byte_count_q <= '0;
     end else begin
       byte_count_q <= byte_count_d;

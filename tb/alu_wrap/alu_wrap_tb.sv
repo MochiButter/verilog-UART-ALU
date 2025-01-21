@@ -86,6 +86,7 @@ module alu_wrap_tb();
   end
   endtask
 
+  integer count = 0;
   initial begin
 `ifdef VERILATOR
   $dumpfile("verilator.vcd");
@@ -97,29 +98,35 @@ module alu_wrap_tb();
     $urandom(42);
     reset();
 
-    send_byte(8'hec);
-    send_byte(8'h00);
-    send_byte(8'h06);
-    send_byte(8'h00);
-    send_byte(8'h42);
-    send_byte(8'h69);
+    repeat (2) begin
+      send_byte(8'hec);
+      send_byte(8'h00);
+      send_byte(8'h06);
+      send_byte(8'h00);
+      send_byte(8'h48);
+      if (count == 1) begin
+        repeat (20) repeat (repeat_cnt) @(negedge clk_i);
+      end
+      send_byte(8'h69);
 
-    if (m_axis_tdata != 8'h42) begin
-      $display("\033[0;31mSIM FAILED\033[0m");
-      $display("1st bit incorrect: %h", m_axis_tdata);
-      $finish();
-    end
+      if (m_axis_tdata != 8'h48) begin
+        $display("\033[0;31mSIM FAILED\033[0m");
+        $display("1st bit incorrect: %h", m_axis_tdata);
+        $finish();
+      end
 
-    @(posedge m_axis_tvalid);
-    #1;
-    if (m_axis_tdata != 8'h69) begin
-      $display("\033[0;31mSIM FAILED\033[0m");
-      $display("2nd bit incorrect: %h", m_axis_tdata);
-      $finish();
-    end
+      @(posedge m_axis_tvalid);
+      #1;
+      if (m_axis_tdata != 8'h69) begin
+        $display("\033[0;31mSIM FAILED\033[0m");
+        $display("2nd bit incorrect: %h", m_axis_tdata);
+        $finish();
+      end
 
-    repeat (10) begin
-      repeat (repeat_cnt) @(negedge clk_i);
+      repeat (10) begin
+        repeat (repeat_cnt) @(negedge clk_i);
+      end
+      count = 1;
     end
 
     $display("No bad outputs detected");
