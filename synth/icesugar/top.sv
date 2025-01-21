@@ -49,12 +49,10 @@ module top
   end
   */
 
-  uart_echo #(
-    .DataWidth(8), 
-    .Prescale(16'(25125000/(115200*8)))
-  ) ue_inst (
+  alu_wrap #(
+    .Prescale(16'(25125000/(115200 * 8)))
+  ) aw_inst (
     .clk_i(clk_25Mhz_w),
-    //.reset_i(reset_q),
     .reset_i(1'b0),
     .rx_data_i(rx_data_i),
     .tx_data_o(tx_data_o)

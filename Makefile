@@ -60,13 +60,13 @@ build/sim/$(SIM_TOP)_gls/iverilog.vcd: $(SIM_TB) build/synth/generic_synth.v
 	cd build/sim/$(SIM_TOP)_gls; \
 	vvp iverilog/tb -fst
 
-icesugar_gls: build/sim/icesugar_gls/verilator.vcd build/sim/icesugar_gls/iverilog.vcd
+icesugar_gls: build/sim/icesugar_gls/verilator.vcd #build/sim/icesugar_gls/iverilog.vcd
 
-build/sim/icesugar_gls/verilator.vcd: build/synth/ice40_synth.v $(YOSYS_DATDIR)/ice40/cells_sim.v tb/uart_echo/uart_echo_tb.sv
+build/sim/icesugar_gls/verilator.vcd: build/synth/ice40_synth.v $(YOSYS_DATDIR)/ice40/cells_sim.v tb/alu_wrap/alu_wrap_tb.sv third_party/alexforencich_uart/rtl/uart_rx.v
 	@mkdir -p build/sim/icesugar_gls/verilator
-	verilator lint/verilator.vlt -Mdir build/sim/icesugar_gls/verilator $^ -DICE40_GLS -DNO_ICE40_DEFAULT_ASSIGNMENTS --binary -Wno-fatal -f tb/tb.f --top uart_echo_tb 
+	verilator lint/verilator.vlt -Mdir build/sim/icesugar_gls/verilator $^ -DICE40_GLS -DNO_ICE40_DEFAULT_ASSIGNMENTS --binary -Wno-fatal -f tb/tb.f --top alu_wrap_tb 
 	cd build/sim/icesugar_gls; \
-	verilator/Vuart_echo_tb +verilator+rand+reset+2
+	verilator/Valu_wrap_tb +verilator+rand+reset+2
 
 build/sim/icesugar_gls/iverilog.vcd: build/synth/ice40_synth.v $(YOSYS_DATDIR)/ice40/cells_sim.v tb/uart_echo/uart_echo_tb.sv
 	@mkdir -p build/sim/icesugar_gls/iverilog
