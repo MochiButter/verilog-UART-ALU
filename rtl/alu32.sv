@@ -15,7 +15,7 @@ module alu32
   ,output [0:0] valid_o);
 
   typedef enum logic [1:0] {
-    Nop, Add, Multiply, Divide
+    Nop, Add, Mul, Div
   } opcode_e;
 
   logic [63:0] result_d;
@@ -32,8 +32,8 @@ module alu32
         end
         //result_d = { {31{sum_l[32]}}, sum_l};
       end
-      Multiply: result_d = '0;
-      Divide: result_d = '0;
+      Mul: result_d = '0;
+      Div: result_d = '0;
       // NOP: when the uart alu gets an opcode that isn't add/mul/div
       Nop: result_d = '0;
     endcase

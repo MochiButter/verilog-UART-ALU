@@ -12,52 +12,113 @@ module uart_alu
   ,output [0:0] valid_o);
 
   typedef enum {
-    Idle, Opcode, Reserved, LengthLSB, LengthMSB, Echo, EchoWait
+    Idle, Opcode, Reserved, LengthLSB, LengthMSB, Echo, EchoWait, AddLoad
   } alu_state_e;
 
   alu_state_e alu_state_d, alu_state_q;
 
+  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, data_en_l, reg_reset_l;
   always_comb begin
     alu_state_d = alu_state_q;
+    opcode_en_l = 1'b0;
+    lsb_en_l = 1'b0;
+    msb_en_l = 1'b0;
+    data_en_l = 1'b0;
+    reg_reset_l = 1'b0;
+
     unique case (alu_state_q) 
-      Idle:      alu_state_d = valid_i ? Opcode : Idle;
-      Opcode: begin
-        // TODO make sure to add other valid opcodes
-        case (opcode_q)
-          8'hec: begin
-            alu_state_d = valid_i ? Reserved : Opcode;
-          end
-          default: alu_state_d = Idle;
-        endcase
-      end
-      Reserved:  alu_state_d = valid_i ? LengthLSB : Reserved;
-      LengthLSB: alu_state_d = valid_i ? LengthMSB : LengthLSB;
-      LengthMSB: begin
-        if (valid_i) begin 
-          case (opcode_q)
-            8'hec: alu_state_d = Echo;
-            default: alu_state_d = Idle;
+      // Idle: wait for a valid input that matches available opcodes
+      Idle: begin
+        if (valid_i) begin
+          case (data_i)
+            8'hec, 8'had, 8'h63, 8'h5b: begin
+              alu_state_d = Opcode;
+              opcode_en_l = 1'b1;
+            end
+            default: begin
+              alu_state_d = Idle;
+              reg_reset_l = 1'b1;
+            end
           endcase
         end
       end
+      // Opcode: wait for a valid input and move to the next state
+      // (can be anything, generally 0x00)
+      Opcode: begin
+        if (valid_i) begin
+          alu_state_d = Reserved;
+        end
+      end
+      // Reserved: wait for a valid input and save the lsb of length in
+      // a register
+      Reserved: begin
+        if (valid_i) begin
+          alu_state_d = LengthLSB;
+          lsb_en_l = 1'b1;
+        end
+      end
+      // LengthLSB: wait for a valid input and save the msb of a length in
+      // a register
+      LengthLSB: begin
+        if (valid_i) begin
+          alu_state_d = LengthMSB;
+          msb_en_l = 1'b1;
+        end
+      end
+      // LengthMSB: wait for a valid input. Depending on the opcode saved, the
+      // next state and the destinatin register of the data is changed.
+      LengthMSB: begin
+        if (valid_i) begin 
+          case (opcode_q)
+            8'hec: begin
+              alu_state_d = Echo;
+              data_en_l = 1'b1;
+            end
+            8'had: begin
+              alu_state_d = AddLoad;
+              // TODO alu registers
+            end
+            default: begin
+              alu_state_d = Idle;
+              reg_reset_l = 1'b1;
+            end
+          endcase
+        end
+      end
+      // Echo: hold the valid echo byte until the consumer is ready. After the
+      // data has been transmitted, lower the valid bit and wait for the next
+      // valid input in the EchoWait state. If all bytes has been exausted,
+      // then go to the idle state
       Echo: begin
         if (ready_i & (byte_count_q == length_q)) begin
           alu_state_d = Idle;
+          reg_reset_l = 1'b1;
         end else if (ready_i) begin
           alu_state_d = EchoWait;
         end else if (valid_i) begin
           alu_state_d = Echo;
+          data_en_l = 1'b1;
         end
       end
+      // EchoWait: after the valid output has been consumed, wait for the next
+      // valud input, unless there are no more bytes to be expected
       EchoWait: begin
         if (byte_count_q == length_q) begin
           alu_state_d = Idle;
+          reg_reset_l = 1'b1;
         end else if (valid_i) begin
           alu_state_d = Echo;
+          data_en_l = 1'b1;
         end
       end
-      default:
+      AddLoad: begin
+        // TODO sequentially add to registers per byte in 32bit operand
+      end
+      // default: catch all for failed states
+      default: begin
         alu_state_d = Idle;
+        reg_reset_l = 1'b1;
+      end
     endcase
   end
 
@@ -67,19 +128,6 @@ module uart_alu
     end else begin
       alu_state_q <= alu_state_d;
     end
-  end
-
-  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, cnt_res_l, data_en_l, data_res_l;
-  always_comb begin
-    opcode_en_l = (alu_state_q == Idle) & valid_i;
-    lsb_en_l = (alu_state_q == Reserved) & valid_i;
-    msb_en_l = (alu_state_q == LengthLSB) & valid_i;
-    // TODO make it cleaner and add other opcodes
-    cnt_res_l = ((alu_state_q == Echo) & ready_i & (byte_count_q == length_q)) | 
-      ((alu_state_q == EchoWait) & (byte_count_q == length_q)) | 
-      ((alu_state_q == Opcode) & ((opcode_q != 8'hec) | (0) | (0)));
-    data_en_l = ((alu_state_q == LengthMSB) | (alu_state_q == Echo)) | (alu_state_q == EchoWait) & valid_i;
-    data_res_l = cnt_res_l;
   end
 
   logic [0:0] valid_l, ready_l;
@@ -99,6 +147,21 @@ module uart_alu
       opcode_q <= opcode_q;
     end
   end
+
+  typedef enum logic [1:0] {
+    Nop, Add, Mul, Div
+  } opcode_e;
+  opcode_e curr_opcode;
+  // opcodes were chosen to have no repeating hex digits
+  always_comb begin
+    case (opcode_q)
+      8'had: curr_opcode = Add;
+      8'h63: curr_opcode = Mul;
+      8'h5b: curr_opcode = Div;
+      default: curr_opcode = Nop;
+    endcase
+  end
+  wire [1:0] __unused__ = curr_opcode;
 
   logic [15:0] length_q;
   always_ff @(posedge clk_i) begin
@@ -123,7 +186,7 @@ module uart_alu
     end
   end
   always_ff @(posedge clk_i) begin
-    if (reset_i | cnt_res_l) begin
+    if (reset_i | reg_reset_l) begin
       byte_count_q <= '0;
     end else begin
       byte_count_q <= byte_count_d;
@@ -132,7 +195,7 @@ module uart_alu
 
   logic [7:0] data_q;
   always_ff @(posedge clk_i) begin
-    if (reset_i | data_res_l) begin
+    if (reset_i | reg_reset_l) begin
       data_q <= '0;
     end else if (data_en_l) begin
       data_q <= data_i;

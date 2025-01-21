@@ -6,8 +6,6 @@ module alu_wrap_tb();
   logic [7:0] m_axis_tdata;
   logic [0:0] m_axis_tvalid;
 
-
-
 `ifdef ICE40_GLS
   parameter Prescale = 16'(25125000/(115200 * 8));
 
@@ -128,6 +126,21 @@ module alu_wrap_tb();
       end
       count = 1;
     end
+
+    send_byte(8'h00);
+    send_byte(8'h48);
+    send_byte(8'hec);
+    send_byte(8'h00);
+    send_byte(8'h07);
+    send_byte(8'h00);
+    send_byte(8'h61);
+    send_byte(8'h62);
+    send_byte(8'h63);
+
+    repeat (30) begin
+      repeat (repeat_cnt) @(negedge clk_i);
+    end
+
 
     $display("No bad outputs detected");
     $display("\033[0;32mSIM PASSED\033[0m");
