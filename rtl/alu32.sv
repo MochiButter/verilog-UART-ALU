@@ -1,6 +1,5 @@
 `timescale 1ns / 1ps
 module alu32 
-  #(parameter [0:0] ResultReg = 1'b1)
   (input [0:0] clk_i
   ,input [0:0] reset_i
 
@@ -18,26 +17,83 @@ module alu32
     Nop, Add, Mul, Div
   } opcode_e;
 
-  logic [63:0] result_d;
-  logic [32:0] sum_l;
+  typedef enum {
+    StIdle, StAdd, StDone
+  } alu32_state_e;
+
+  alu32_state_e alu32_state_d, alu32_state_q;
+
+  logic [0:0] alu_ready_ol, alu_valid_ol;
+  logic [0:0] adder_ready_il, adder_valid_il, result_add_en_l;
   always_comb begin
-    case (opcode_i)
-      Add: begin
-        sum_l = operand_a_i + operand_b_i;
-        // sign extend
-        if(sum_l[32] == 1'b1) begin
-          result_d = { {31{1'b1}}, sum_l};
-        end else begin
-          result_d = { {31{1'b0}}, sum_l};
+    alu32_state_d = alu32_state_q;
+    alu_ready_ol = 1'b0;
+    alu_valid_ol = 1'b0;
+
+    adder_ready_il = 1'b0;
+    adder_valid_il = 1'b0;
+    result_add_en_l = 1'b0;
+
+    case (alu32_state_q)
+      // StIdle: the alu is in an idle state and all modules are ready to take
+      // an input.
+      StIdle: begin
+        alu_ready_ol = 1'b1;
+        if (valid_i) begin
+          case (opcode_i)
+            Add: begin
+              alu32_state_d = StAdd;
+              adder_valid_il = 1'b1;
+            end
+            default: alu32_state_d = StIdle;
+          endcase
         end
-        //result_d = { {31{sum_l[32]}}, sum_l};
       end
-      Mul: result_d = '0;
-      Div: result_d = '0;
-      // NOP: when the uart alu gets an opcode that isn't add/mul/div
-      Nop: result_d = '0;
+      // StAdd: the adder is busy adding (1 cycle to register sum), when it is
+      // done, save the sum in the alu output register
+      StAdd: begin
+        if (adder_valid_o) begin
+          alu32_state_d = StDone;
+          result_add_en_l = 1'b1;
+        end
+      end
+      // StDone: the alu has finished calculating the operation and is waiting
+      // for the result to be consumed.
+      StDone: begin
+        alu_valid_ol = 1'b1;
+        if (ready_i) begin
+          alu32_state_d = StIdle;
+        end
+      end
+      default: alu32_state_d = StIdle;
     endcase
   end
+
+  always_ff @(posedge clk_i) begin
+    if (reset_i) begin
+      alu32_state_q <= StIdle;
+    end else begin
+      alu32_state_q <= alu32_state_d;
+    end
+  end
+
+  wire [0:0] adder_ready_o, adder_valid_o;
+  wire [31:0] sum_o;
+  wire [0:0] carry_o;
+  add32 #() add32_inst (
+    .clk_i(clk_i),
+    .reset_i(reset_i),
+    
+    .valid_i(adder_valid_il),
+    .operand_a_i(operand_a_i),
+    .operand_b_i(operand_b_i),
+    .ready_o(adder_ready_o),
+
+    .ready_i(adder_ready_il),
+    .sum_o(sum_o),
+    .carry_o(carry_o),
+    .valid_o(adder_valid_o)
+  );
 
   /*
   bsg_imul_iterative #(
@@ -78,18 +134,16 @@ module alu32
   );
   */
 
-  // Put output through a register if parameter is set.
-  if (ResultReg == 1'b1) begin
-    logic [63:0] result_q;
-    always_ff @(posedge clk_i) begin
-      if(reset_i) begin
-        result_q <= '0;
-      end else begin
-        result_q <= result_d;
-      end
+  // Put output through a register
+  logic [63:0] result_q;
+  always_ff @(posedge clk_i) begin
+    if(reset_i) begin
+      result_q <= '0;
+    end else if (result_add_en_l) begin
+      result_q <= { {32{carry_o}}, sum_o};
     end
-    assign result_o = result_q;
-  end else begin
-    assign result_o = result_d;
   end
+  assign result_o = result_q;
+  assign ready_o = alu_ready_ol;
+  assign valid_o = alu_valid_ol;
 endmodule

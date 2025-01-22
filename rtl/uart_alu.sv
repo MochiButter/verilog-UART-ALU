@@ -12,12 +12,12 @@ module uart_alu
   ,output [0:0] valid_o);
 
   typedef enum {
-    Idle, Opcode, Reserved, LengthLSB, LengthMSB, Echo, EchoWait, AddLoad
+    Idle, Opcode, Reserved, LengthLSB, LengthMSB, Echo, EchoWait, RegALoad, RegBLoad, ALUWait, ALUSend
   } alu_state_e;
 
   alu_state_e alu_state_d, alu_state_q;
 
-  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, data_en_l, reg_reset_l;
+  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, data_en_l, reg_reset_l, op_a_en_l, op_b_en_l, op_valid_l;
   always_comb begin
     alu_state_d = alu_state_q;
     opcode_en_l = 1'b0;
@@ -25,6 +25,9 @@ module uart_alu
     msb_en_l = 1'b0;
     data_en_l = 1'b0;
     reg_reset_l = 1'b0;
+    op_a_en_l = 1'b0;
+    op_b_en_l = 1'b0;
+    op_valid_l = 1'b0;
 
     unique case (alu_state_q) 
       // Idle: wait for a valid input that matches available opcodes
@@ -75,8 +78,8 @@ module uart_alu
               data_en_l = 1'b1;
             end
             8'had: begin
-              alu_state_d = AddLoad;
-              // TODO alu registers
+              alu_state_d = RegALoad;
+              op_a_en_l = 1'b1;
             end
             default: begin
               alu_state_d = Idle;
@@ -111,8 +114,45 @@ module uart_alu
           data_en_l = 1'b1;
         end
       end
-      AddLoad: begin
-        // TODO sequentially add to registers per byte in 32bit operand
+      // RegALoad: Reads the next four bytes into a 32bit register for use
+      // with the ALU. Based on the packet format, the last two bits are
+      // always aligned with when each operand starts.
+      RegALoad: begin
+        if (valid_i) begin
+          if (byte_count_q[1:0] != 2'b00) begin
+            op_a_en_l = 1'b1;
+          // TODO catch a case where the length is shorter than at least to
+          // operands
+          end else begin
+            alu_state_d = RegBLoad; 
+            op_b_en_l = 1'b1;
+          end
+        end
+      end
+      // RegBLoad: Same function as the pevious, but outputs the enable signal
+      // for the operand b registers. After four bytes are read, goes to the
+      // wait state
+      RegBLoad: begin
+        if (valid_i) begin
+          if (byte_count_q[1:0] != 2'b00) begin
+            op_b_en_l = 1'b1;
+          end
+        end else begin
+          if (byte_count_q[1:0] == 2'b00) begin
+            alu_state_d = ALUWait;
+            op_valid_l = 1'b1;
+          end
+        end
+      end
+      ALUWait: begin
+        // TODO depending on if operands are exausted, go to done or load more
+        if (alu32_valid_o) begin
+          alu_state_d = ALUSend;
+          // TODO save result to register 64
+        end
+      end
+      ALUSend: begin
+        alu_state_d = Idle;
       end
       // default: catch all for failed states
       default: begin
@@ -192,6 +232,52 @@ module uart_alu
       byte_count_q <= byte_count_d;
     end
   end
+
+  logic [31:0] operand_a_q;
+  always_ff @(posedge clk_i) begin
+    if (reset_i | reg_reset_l) begin
+      operand_a_q <= '0;
+    end else if (op_a_en_l & (byte_count_q[1:0] == 2'b00)) begin
+      operand_a_q[7:0] <= data_i;
+    end else if (op_a_en_l & (byte_count_q[1:0] == 2'b01)) begin
+      operand_a_q[15:8] <= data_i;
+    end else if (op_a_en_l & (byte_count_q[1:0] == 2'b10)) begin
+      operand_a_q[23:16] <= data_i;
+    end else if (op_a_en_l & (byte_count_q[1:0] == 2'b11)) begin
+      operand_a_q[31:24] <= data_i;
+    end
+  end
+
+  logic [31:0] operand_b_q;
+  always_ff @(posedge clk_i) begin
+    if (reset_i | reg_reset_l) begin
+      operand_b_q <= '0;
+    end else if (op_b_en_l & (byte_count_q[1:0] == 2'b00)) begin
+      operand_b_q[7:0] <= data_i;
+    end else if (op_b_en_l & (byte_count_q[1:0] == 2'b01)) begin
+      operand_b_q[15:8] <= data_i;
+    end else if (op_b_en_l & (byte_count_q[1:0] == 2'b10)) begin
+      operand_b_q[23:16] <= data_i;
+    end else if (op_b_en_l & (byte_count_q[1:0] == 2'b11)) begin
+      operand_b_q[31:24] <= data_i;
+    end
+  end
+
+  wire [0:0] alu32_ready_o, alu32_valid_o;
+  alu32 #() alu32_inst (
+    .clk_i(clk_i),
+    .reset_i(reset_i),
+
+    .valid_i(op_valid_l),
+    .opcode_i(curr_opcode),
+    .operand_a_i(operand_a_q),
+    .operand_b_i(operand_b_q),
+    .ready_o(alu32_ready_o),
+
+    .ready_i(),
+    .result_o(),
+    .valid_o(alu32_valid_o)
+  );
 
   logic [7:0] data_q;
   always_ff @(posedge clk_i) begin

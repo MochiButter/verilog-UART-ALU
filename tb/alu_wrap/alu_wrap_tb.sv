@@ -85,6 +85,7 @@ module alu_wrap_tb();
   endtask
 
   integer count = 0;
+  logic [31:0] operand;
   initial begin
 `ifdef VERILATOR
   $dumpfile("verilator.vcd");
@@ -141,6 +142,51 @@ module alu_wrap_tb();
       repeat (repeat_cnt) @(negedge clk_i);
     end
 
+    send_byte(8'had);
+    send_byte(8'h00);
+    send_byte(8'h0d);
+    send_byte(8'h00);
+    
+    send_byte(8'hff);
+    send_byte(8'h02);
+    send_byte(8'h4b);
+    send_byte(8'h0d);
+
+
+`ifdef ICE40_GLS
+    operand = top_inst.aw_inst.ua_inst.operand_a_q;
+`else
+    operand = aw_inst.ua_inst.operand_a_q;
+`endif
+    if (operand != 32'h0d4b02ff) begin
+      $display("\033[0;31mSIM FAILED\033[0m");
+      $display("Add opcode loaded the wrong operand a: %h", operand);
+      $finish();
+    end
+
+    repeat (30) begin
+      repeat (repeat_cnt) @(negedge clk_i);
+    end
+    
+    send_byte(8'h21);
+    send_byte(8'h43);
+    send_byte(8'h65);
+    send_byte(8'h87);
+
+`ifdef ICE40_GLS
+    operand = top_inst.aw_inst.ua_inst.operand_b_q;
+`else
+    operand = aw_inst.ua_inst.operand_b_q;
+`endif
+    if (operand != 32'h87654321) begin
+      $display("\033[0;31mSIM FAILED\033[0m");
+      $display("Add opcode loaded the wrong operand b: %h", operand);
+      $finish();
+    end
+
+    repeat (100) begin
+      repeat (repeat_cnt) @(negedge clk_i);
+    end
 
     $display("No bad outputs detected");
     $display("\033[0;32mSIM PASSED\033[0m");
