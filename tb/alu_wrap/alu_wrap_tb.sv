@@ -144,7 +144,7 @@ module alu_wrap_tb();
 
     send_byte(8'had);
     send_byte(8'h00);
-    send_byte(8'h0d);
+    send_byte(8'h0c);
     send_byte(8'h00);
     
     send_byte(8'hff);
@@ -183,6 +183,25 @@ module alu_wrap_tb();
       $display("Add opcode loaded the wrong operand b: %h", operand);
       $finish();
     end
+
+    repeat (100) begin
+      repeat (repeat_cnt) @(negedge clk_i);
+    end
+
+    send_byte(8'had);
+    send_byte(8'h00);
+    send_byte(8'h0c);
+    send_byte(8'h00);
+    
+    send_byte(8'h01);
+    send_byte(8'h00);
+    send_byte(8'h00);
+    send_byte(8'h00);
+
+    send_byte(8'had);
+    send_byte(8'hde);
+    send_byte(8'h00);
+    send_byte(8'h00);
 
     repeat (100) begin
       repeat (repeat_cnt) @(negedge clk_i);

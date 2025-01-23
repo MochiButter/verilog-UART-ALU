@@ -30,7 +30,7 @@ module alu32
     alu_ready_ol = 1'b0;
     alu_valid_ol = 1'b0;
 
-    adder_ready_il = 1'b0;
+    adder_ready_il = ready_i;
     adder_valid_il = 1'b0;
     result_add_en_l = 1'b0;
 

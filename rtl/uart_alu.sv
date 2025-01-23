@@ -17,7 +17,8 @@ module uart_alu
 
   alu_state_e alu_state_d, alu_state_q;
 
-  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, data_en_l, reg_reset_l, op_a_en_l, op_b_en_l, op_valid_l;
+  logic [7:0] alu_data_l;
+  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, data_en_l, reg_reset_l, op_a_en_l, op_b_en_l, op_valid_l, alu_res_en_l, alu_ready_l, send_cnt_up_l;
   always_comb begin
     alu_state_d = alu_state_q;
     opcode_en_l = 1'b0;
@@ -28,6 +29,10 @@ module uart_alu
     op_a_en_l = 1'b0;
     op_b_en_l = 1'b0;
     op_valid_l = 1'b0;
+    alu_res_en_l = 1'b0;
+    alu_ready_l = 1'b1;
+    send_cnt_up_l = 1'b0;
+    alu_data_l = '0;
 
     unique case (alu_state_q) 
       // Idle: wait for a valid input that matches available opcodes
@@ -134,25 +139,42 @@ module uart_alu
       // wait state
       RegBLoad: begin
         if (valid_i) begin
-          if (byte_count_q[1:0] != 2'b00) begin
-            op_b_en_l = 1'b1;
-          end
-        end else begin
-          if (byte_count_q[1:0] == 2'b00) begin
+          op_b_en_l = 1'b1;
+          if (byte_count_q[1:0] == 2'b11) begin
             alu_state_d = ALUWait;
-            op_valid_l = 1'b1;
           end
         end
       end
       ALUWait: begin
+        op_valid_l = 1'b1;
         // TODO depending on if operands are exausted, go to done or load more
         if (alu32_valid_o) begin
+          // TODO go to load more regs if length is done
           alu_state_d = ALUSend;
-          // TODO save result to register 64
+          alu_res_en_l = 1'b1;
         end
       end
       ALUSend: begin
-        alu_state_d = Idle;
+        // ready may always be high
+        alu_ready_l = 1'b0;
+        send_cnt_up_l = ready_i;
+        case (send_count_q) 
+          3'h0: alu_data_l = alu_res_q[7:0];
+          3'h1: alu_data_l = alu_res_q[15:8];
+          3'h2: alu_data_l = alu_res_q[23:16];
+          3'h3: alu_data_l = alu_res_q[31:24];
+
+          3'h4: alu_data_l = alu_res_q[39:32];
+          3'h5: alu_data_l = alu_res_q[47:40];
+          3'h6: alu_data_l = alu_res_q[55:48];
+          3'h7: alu_data_l = alu_res_q[63:56];
+        endcase
+        if (ready_i & (send_count_q == 3'h7)) begin
+          alu_state_d = Idle;
+        end
+        // TODO fill the b register with the next 32 bits and the a register
+        // with the result until no more iperands are left
+        // TODO if length - counter >= 4 then load again
       end
       // default: catch all for failed states
       default: begin
@@ -172,9 +194,9 @@ module uart_alu
 
   logic [0:0] valid_l, ready_l;
   always_comb begin
-    valid_l = (alu_state_q == Echo);
+    valid_l = (alu_state_q == Echo) | (alu_state_q == ALUSend);
     // TODO fix for when calcs are being done
-    ready_l = 1'b1;
+    ready_l = (alu_state_q != Echo);
   end
 
   logic [7:0] opcode_q;
@@ -233,6 +255,22 @@ module uart_alu
     end
   end
 
+  logic [2:0] send_count_d, send_count_q;
+  always_comb begin
+    if (send_cnt_up_l) begin
+      send_count_d = send_count_q + 1'b1;
+    end else begin
+      send_count_d = send_count_q;
+    end
+  end
+  always_ff @(posedge clk_i) begin
+    if (reset_i | reg_reset_l) begin
+      send_count_q <= '0;
+    end else begin
+      send_count_q <= send_count_d;
+    end
+  end
+
   logic [31:0] operand_a_q;
   always_ff @(posedge clk_i) begin
     if (reset_i | reg_reset_l) begin
@@ -264,6 +302,7 @@ module uart_alu
   end
 
   wire [0:0] alu32_ready_o, alu32_valid_o;
+  wire [63:0] alu_res_o;
   alu32 #() alu32_inst (
     .clk_i(clk_i),
     .reset_i(reset_i),
@@ -274,10 +313,19 @@ module uart_alu
     .operand_b_i(operand_b_q),
     .ready_o(alu32_ready_o),
 
-    .ready_i(),
-    .result_o(),
+    .ready_i(alu_ready_l),
+    .result_o(alu_res_o),
     .valid_o(alu32_valid_o)
   );
+
+  logic [63:0] alu_res_q;
+  always_ff @(posedge clk_i) begin
+    if (reset_i | reg_reset_l) begin
+      alu_res_q <= '0;
+    end else if (alu_res_en_l) begin
+      alu_res_q <= alu_res_o;
+    end
+  end
 
   logic [7:0] data_q;
   always_ff @(posedge clk_i) begin
@@ -292,5 +340,5 @@ module uart_alu
 
   assign ready_o = ready_l;
   assign valid_o = valid_l;
-  assign data_o = data_q;
+  assign data_o = ({8{alu_state_q == Echo}} & data_q) | ({8{alu_state_q == ALUSend}} & alu_data_l);
 endmodule
