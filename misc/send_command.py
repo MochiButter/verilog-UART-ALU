@@ -21,9 +21,10 @@ reader = serial.threaded.ReaderThread(ser, UARTMonitor)
 reader.start()
 
 while 1:
-    echo(reader, "Hi")
+    #echo(reader, "Hi")
+    add32(ser, [0x00ff, 0xdead])
     #reader.write(bytearray([0xec, 0x00, 0x06, 0x00, 0x48, 0x69]))
-    time.sleep(1)
+    time.sleep(5)
 
 reader.close()
 exit()
