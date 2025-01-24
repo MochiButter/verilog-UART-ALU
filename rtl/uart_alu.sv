@@ -17,8 +17,8 @@ module uart_alu
 
   alu_state_e alu_state_d, alu_state_q;
 
-  logic [7:0] alu_data_l;
-  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, data_en_l, reg_reset_l, op_a_en_l, op_b_en_l, op_valid_l, alu_res_en_l, alu_ready_l, send_cnt_up_l;
+  logic [7:0] alu_data_l, data_l;
+  logic [0:0] opcode_en_l, lsb_en_l, msb_en_l, data_en_l, reg_reset_l, op_a_en_l, op_b_en_l, op_valid_l, alu_res_en_l, alu_ready_l, send_cnt_up_l, load_op_a_result_l;
   always_comb begin
     alu_state_d = alu_state_q;
     opcode_en_l = 1'b0;
@@ -32,7 +32,9 @@ module uart_alu
     alu_res_en_l = 1'b0;
     alu_ready_l = 1'b1;
     send_cnt_up_l = 1'b0;
+    load_op_a_result_l = 1'b0;
     alu_data_l = '0;
+    data_l = '0;
 
     unique case (alu_state_q) 
       // Idle: wait for a valid input that matches available opcodes
@@ -79,8 +81,13 @@ module uart_alu
         if (valid_i) begin 
           case (opcode_q)
             8'hec: begin
-              alu_state_d = Echo;
-              data_en_l = 1'b1;
+              if (ready_i) begin
+                alu_state_d = EchoWait;
+                data_l = data_i;
+              end else begin
+                alu_state_d = Echo;
+                data_en_l = 1'b1;
+              end
             end
             8'had: begin
               alu_state_d = RegALoad;
@@ -98,7 +105,13 @@ module uart_alu
       // valid input in the EchoWait state. If all bytes has been exausted,
       // then go to the idle state
       Echo: begin
-        if (ready_i & (byte_count_q == length_q)) begin
+        data_l = data_q;
+        // pass input directly to the consumer without registering
+        if (ready_i & valid_i & (byte_count_q != length_q)) begin
+          alu_state_d = EchoWait;
+          data_l = data_i;
+        end
+        else if (ready_i & (byte_count_q == length_q)) begin
           alu_state_d = Idle;
           reg_reset_l = 1'b1;
         end else if (ready_i) begin
@@ -149,9 +162,13 @@ module uart_alu
         op_valid_l = 1'b1;
         // TODO depending on if operands are exausted, go to done or load more
         if (alu32_valid_o) begin
-          // TODO go to load more regs if length is done
-          alu_state_d = ALUSend;
-          alu_res_en_l = 1'b1;
+          if (byte_count_q == length_q) begin
+            alu_state_d = ALUSend;
+            alu_res_en_l = 1'b1;
+          end else begin
+            alu_state_d = RegBLoad;
+            load_op_a_result_l = 1'b1;
+          end
         end
       end
       ALUSend: begin
@@ -169,8 +186,11 @@ module uart_alu
           3'h6: alu_data_l = alu_res_q[55:48];
           3'h7: alu_data_l = alu_res_q[63:56];
         endcase
+        data_l = alu_data_l;
         if (ready_i & (send_count_q == 3'h7)) begin
+          // move onto the next operand
           alu_state_d = Idle;
+          reg_reset_l = 1'b1;
         end
         // TODO fill the b register with the next 32 bits and the a register
         // with the result until no more iperands are left
@@ -194,9 +214,9 @@ module uart_alu
 
   logic [0:0] valid_l, ready_l;
   always_comb begin
-    valid_l = (alu_state_q == Echo) | (alu_state_q == ALUSend);
+    valid_l = (opcode_q == 8'hec & alu_state_q == LengthMSB & valid_i & ready_i) | (alu_state_q == Echo) | (alu_state_q == ALUSend);
     // TODO fix for when calcs are being done
-    ready_l = (alu_state_q != Echo);
+    ready_l = (alu_state_q != Echo) & (alu_state_q != ALUWait);
   end
 
   logic [7:0] opcode_q;
@@ -283,6 +303,8 @@ module uart_alu
       operand_a_q[23:16] <= data_i;
     end else if (op_a_en_l & (byte_count_q[1:0] == 2'b11)) begin
       operand_a_q[31:24] <= data_i;
+    end else if (load_op_a_result_l) begin
+      operand_a_q <= alu_res_o[31:0];
     end
   end
 
@@ -340,5 +362,6 @@ module uart_alu
 
   assign ready_o = ready_l;
   assign valid_o = valid_l;
-  assign data_o = ({8{alu_state_q == Echo}} & data_q) | ({8{alu_state_q == ALUSend}} & alu_data_l);
+  //assign data_o = ({8{alu_state_q == Echo}} & data_q) | ({8{alu_state_q == ALUSend}} & alu_data_l);
+  assign data_o = data_l;
 endmodule
