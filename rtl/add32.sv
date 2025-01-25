@@ -1,3 +1,5 @@
+// Add module created to have the same ready valid & interface as the multiply
+// and divide modules
 `timescale 1ns / 1ps
 module add32
   (input [0:0] clk_i
@@ -10,7 +12,6 @@ module add32
 
   ,input [0:0] ready_i
   ,output [31:0] sum_o
-  ,output [0:0] carry_o
   ,output [0:0] valid_o);
 
   // do the calculations
@@ -18,17 +19,15 @@ module add32
   always_comb begin
     sum_l = operand_a_i + operand_b_i;
   end
+  wire [0:0] __unused__ = sum_l[32];
 
   // register outputs
   logic [31:0] sum_q;
-  logic [0:0] carry_q;
   always_ff @(posedge clk_i) begin
     if (reset_i) begin
       sum_q <= '0;
-      carry_q <= '0;
     end else if (valid_i & ready_o) begin
       sum_q <= sum_l[31:0];
-      carry_q <= sum_l[32];
     end
   end
 
@@ -42,7 +41,6 @@ module add32
   end
 
   assign sum_o = sum_q;
-  assign carry_o = carry_q;
   assign ready_o = ~valid_o | ready_i;
   assign valid_o = valid_q;
 endmodule 
