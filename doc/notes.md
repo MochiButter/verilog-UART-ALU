@@ -32,3 +32,17 @@ Throughout the work done for this section, I made various modification to the bu
 - In the `icesugar.tcl` file, `ice40_opt` was causing the synthesis to fail. I commented this out.
 - In `make lint`, the icestorm sim files were causing syntax errors. I added `-DNO_ICE40_DEFAULT_ASSIGNMENTS` to verilator calls to bypass this.
 - Both yosys and nextpnr now print to logs instead of stdout.
+
+## Step 2 - Python serial packets
+I had trouble writing and reading bytes using pyserial, while picocom worked flawlessly.
+
+Issues with using picocom:
+
+- Picocom required all bytes sent to be in `bytearray` types. I was using `write(0xec)` which is different from `write(b'\xec')` I'm not sure why the first did not give me an error.
+- Using the `threading.Thread` to call `read(1)` gave me errors when using it together with `time.sleep()`. Using pyserial's own threaded reader fixed this.
+
+An example of sending bytes to be echoed (Using ascii messages here) and doing addition, shown in Figure \ref{echo_py} and \ref{add_py}:
+
+![Echo response \label{echo_py}](res/echo_py_res.png)
+
+![Add response \label{add_py}](res/add_py_res.png)
