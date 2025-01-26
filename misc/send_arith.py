@@ -38,10 +38,15 @@ for i in operands:
 
 add32(ser, operands)
 
-res = ser.read(8)
+res = ser.read(4)
 result = int.from_bytes(res, byteorder="little", signed=True)
 
 print(f"Result: {result}")
 print(f"{result:064b}")
 print(f"Expected: {expected}")
 print(f"{expected:064b}")
+
+if result == expected:
+    print("\033[0;32mMatching\033[0m");
+else:
+    print("\033[0;31mDifferent\033[0m");

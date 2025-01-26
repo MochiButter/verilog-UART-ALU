@@ -3,6 +3,9 @@ import serial
 import serial.threaded
 
 def echo(readerthread, message):
+    if not message.isascii():
+        print("Message must be ascii")
+        return
     msg_bytes = bytes(message, "Ascii")
     length = len(msg_bytes) + 4
     messageHeader = [0xec, 0x00, length & 0xff, length & 0xff00]
@@ -21,10 +24,10 @@ reader = serial.threaded.ReaderThread(ser, UARTMonitor)
 reader.start()
 
 while 1:
-    #echo(reader, "Hi")
-    add32(ser, [0x00ff, 0xdead])
-    #reader.write(bytearray([0xec, 0x00, 0x06, 0x00, 0x48, 0x69]))
-    time.sleep(5)
+    message = input("Enter message: ")
+    echo(reader, message)
+    time.sleep(1)
+    print()
 
 reader.close()
 exit()
