@@ -89,7 +89,7 @@ module uart_alu
                 data_en_l = 1'b1;
               end
             end
-            8'had: begin
+            8'had, 8'h63, 8'h5d: begin
               alu_state_d = RegALoad;
               op_a_en_l = 1'b1;
             end
@@ -187,6 +187,11 @@ module uart_alu
           3'h7: alu_data_l = alu_res_q[63:56];
         endcase
         data_l = alu_data_l;
+        // in the case of add send only 32 bits
+        if (opcode_q == 8'had & ready_i & (send_count_q == 3'h3)) begin
+          alu_state_d = Idle;
+          reg_reset_l = 1'b1;
+        end
         if (ready_i & (send_count_q == 3'h7)) begin
           // move onto the next operand
           alu_state_d = Idle;

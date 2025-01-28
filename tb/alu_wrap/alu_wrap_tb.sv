@@ -6,6 +6,9 @@ module alu_wrap_tb();
   logic [7:0] m_axis_tdata;
   logic [0:0] m_axis_tvalid;
 
+  logic [7:0] s_axis_tdata;
+  logic [0:0] s_axis_tvalid, s_axis_tready;
+
 `ifdef ICE40_GLS
   parameter Prescale = 16'(25125000/(115200 * 8));
 
@@ -49,6 +52,17 @@ module alu_wrap_tb();
   `endif
 `endif
 
+  uart_tx #() uart_tx_inst(
+    .clk(clk_i),
+    .rst(reset_i),
+    .s_axis_tdata(s_axis_tdata),
+    .s_axis_tvalid(s_axis_tvalid),
+    .s_axis_tready(s_axis_tready),
+    .txd(rx_data_i),
+    .busy(),
+    .prescale(Prescale)
+  );
+
   uart_rx #() uart_rx_inst(
     .clk(clk_i),
     .rst(reset_i),
@@ -71,21 +85,100 @@ module alu_wrap_tb();
   endtask
 
   localparam repeat_cnt = Prescale * 8;
-  logic [9:0] data_l;
 
-  task send_byte(input [7:0] data);
+  int rnd_cnt = 0;
+  int rnd_num = 0;
+  logic [7:0] rnd_num_bytes [4];
+  logic [15:0] bytes_send;
+  int rand_opcode = 0;
+  longint expected = 0;
+  int tmp_exp = 0;
+  logic [7:0] data_task_header [4];
+
+  task send_msg();
   begin
-    // append start and end bits
-    data_l = {1'b1, data, 1'b0};
-    for(int i = 0; i < 10; i ++) begin
-      rx_data_i = data_l[i];
-      repeat(repeat_cnt) @(negedge clk_i);
+    expected = 0;
+    while (~s_axis_tready) @(negedge clk_i);
+    // randomly generate at least 2 operands, upto 4 additional
+    rnd_cnt = ({$random()} % 4 + 2);
+    // bytes to send are 4 (header) + 4 per operand
+    bytes_send = 16'((4 * rnd_cnt) + 4);
+    assert(bytes_send % 4 == 0)
+    // choose randomly from opcodes
+    // rand_opcode = {$random()} % 3;
+    rand_opcode = 0;
+    case (rand_opcode)
+      0: data_task_header[0] = 8'had;
+      1: data_task_header[0] = 8'h63;
+      // divide special case: only two operands
+      2: begin
+        rnd_cnt = 2;
+        data_task_header[0] = 8'h5b;
+      end
+      default: begin 
+        $display("Bad opcode");
+        $finish();
+      end
+    endcase
+    data_task_header[1] = 8'h00;
+    data_task_header[2] = bytes_send[7:0];
+    data_task_header[3] = bytes_send[15:8];
+    $write("Command: ");
+
+    // send the header
+    for (int i = 0; i < 4; i ++) begin
+      $write("%h", data_task_header[i]);
+      s_axis_tdata = data_task_header[i];
+      s_axis_tvalid = 1'b1;
+      while (~s_axis_tready) @(negedge clk_i);
+      @(negedge s_axis_tready);
+      s_axis_tvalid = 1'b0;
+      @(negedge clk_i);
     end
+
+    for (int i = 0; i < rnd_cnt; i ++) begin
+      // genrate random 32 bit number and split into bytes
+      rnd_num = $random();
+      rnd_num_bytes[0] = rnd_num[7:0];
+      rnd_num_bytes[1] = rnd_num[15:8];
+      rnd_num_bytes[2] = rnd_num[23:16];
+      rnd_num_bytes[3] = rnd_num[31:24];
+      case (rand_opcode)
+        0: expected[31:0] = expected[31:0] + rnd_num;
+        1: begin
+          if (i == 0) begin
+            expected[31:0] = rnd_num;
+          end else begin
+            expected = expected[31:0] * rnd_num;
+          end
+        end
+        2: begin
+          if (i == 0) begin
+            tmp_exp = rnd_num;
+          end else begin
+            expected[31:0] = tmp_exp / rnd_num;
+            expected[63:32] = tmp_exp % rnd_num;
+          end
+        end
+      endcase
+
+      // send operand
+      for (int j = 0; j < 4; j ++) begin
+        $write("%h", rnd_num_bytes[j]);
+        s_axis_tdata = rnd_num_bytes[j];
+        s_axis_tvalid = 1'b1;
+        while (~s_axis_tready) @(negedge clk_i);
+        s_axis_tvalid = 1'b0;
+        @(negedge clk_i);
+      end
+    end
+    $display("");
   end
   endtask
 
-  integer count = 0;
-  logic [31:0] operand;
+  longint actual = 0;
+  int read_cnt = 0;
+  logic [0:0] fail = 1'b0;
   initial begin
 `ifdef VERILATOR
   $dumpfile("verilator.vcd");
@@ -94,123 +187,39 @@ module alu_wrap_tb();
 `endif
   $dumpvars;
 
-    $urandom(42);
+    //$urandom(42);
     reset();
 
-    repeat (2) begin
-      send_byte(8'hec);
-      send_byte(8'h00);
-      send_byte(8'h06);
-      send_byte(8'h00);
-      send_byte(8'h48);
-      if (count == 1) begin
-        repeat (20) repeat (repeat_cnt) @(negedge clk_i);
+    // Test arythmetic
+    repeat (10) begin
+      send_msg();
+      actual = 0;
+      
+      case (rand_opcode)
+        0: read_cnt = 4;
+        1, 2: read_cnt = 8;
+      endcase
+      for (int i = 0; i < read_cnt; i ++) begin
+        while (~m_axis_tvalid) @(negedge clk_i);
+        actual |= m_axis_tdata << (i * 8);
+        @(negedge clk_i);
       end
-      send_byte(8'h69);
-
-      if (m_axis_tdata != 8'h48) begin
+      case (rand_opcode) 
+        0: begin
+          $display("Expected: %h\nGot:\t %h", expected[31:0], actual[31:0]);
+          fail = (expected[31:0] != actual[31:0]);
+        end
+        1, 2: begin
+          $display("Expected: %h\nGot:\t %h", expected[63:0], actual[63:0]);
+          fail = (expected[63:0] != actual[63:0]);
+        end
+      endcase
+      if (fail) begin
         $display("\033[0;31mSIM FAILED\033[0m");
-        $display("1st bit incorrect: %h", m_axis_tdata);
         $finish();
       end
-
-      @(posedge m_axis_tvalid);
-      #1;
-      if (m_axis_tdata != 8'h69) begin
-        $display("\033[0;31mSIM FAILED\033[0m");
-        $display("2nd bit incorrect: %h", m_axis_tdata);
-        $finish();
-      end
-
-      repeat (10) begin
-        repeat (repeat_cnt) @(negedge clk_i);
-      end
-      count = 1;
-    end
-
-    send_byte(8'h00);
-    send_byte(8'h48);
-    send_byte(8'hec);
-    send_byte(8'h00);
-    send_byte(8'h07);
-    send_byte(8'h00);
-    send_byte(8'h61);
-    send_byte(8'h62);
-    send_byte(8'h63);
-
-    repeat (30) begin
-      repeat (repeat_cnt) @(negedge clk_i);
-    end
-
-    send_byte(8'had);
-    send_byte(8'h00);
-    send_byte(8'h0c);
-    send_byte(8'h00);
-    
-    send_byte(8'hff);
-    send_byte(8'h02);
-    send_byte(8'h4b);
-    send_byte(8'h0d);
-
-
-`ifdef ICE40_GLS
-    operand = top_inst.aw_inst.ua_inst.operand_a_q;
-`else
-    operand = aw_inst.ua_inst.operand_a_q;
-`endif
-    if (operand != 32'h0d4b02ff) begin
-      $display("\033[0;31mSIM FAILED\033[0m");
-      $display("Add opcode loaded the wrong operand a: %h", operand);
-      $finish();
-    end
-
-    repeat (30) begin
-      repeat (repeat_cnt) @(negedge clk_i);
-    end
-    
-    send_byte(8'h21);
-    send_byte(8'h43);
-    send_byte(8'h65);
-    send_byte(8'h87);
-
-`ifdef ICE40_GLS
-    operand = top_inst.aw_inst.ua_inst.operand_b_q;
-`else
-    operand = aw_inst.ua_inst.operand_b_q;
-`endif
-    if (operand != 32'h87654321) begin
-      $display("\033[0;31mSIM FAILED\033[0m");
-      $display("Add opcode loaded the wrong operand b: %h", operand);
-      $finish();
-    end
-
-    repeat (100) begin
-      repeat (repeat_cnt) @(negedge clk_i);
-    end
-
-    send_byte(8'had);
-    send_byte(8'h00);
-    send_byte(8'h10);
-    send_byte(8'h00);
-    
-    send_byte(8'h01);
-    send_byte(8'h00);
-    send_byte(8'h00);
-    send_byte(8'h00);
-
-    send_byte(8'had);
-    send_byte(8'hde);
-    send_byte(8'h00);
-    send_byte(8'h00);
-
-    send_byte(8'h02);
-    send_byte(8'h00);
-    send_byte(8'h00);
-    send_byte(8'h00);
-
-
-    repeat (100) begin
-      repeat (repeat_cnt) @(negedge clk_i);
+      $display("");
+      repeat(10) repeat (repeat_cnt) @(negedge clk_i);
     end
 
     $display("No bad outputs detected");
