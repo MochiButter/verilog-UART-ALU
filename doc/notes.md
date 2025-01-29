@@ -46,3 +46,33 @@ An example of sending bytes to be echoed (Using ascii messages here) and doing a
 ![Echo response \label{echo_py}](res/echo_py_res.png)
 
 ![Add response \label{add_py}](res/add_py_res.png)
+
+## Step 3 - Sending packets
+Here's the definitions of the commands that I decided for the uart_alu module.
+
+| Function | Opcode | Length requirements               | Response (bytes)                 |
+| -------- | ------ | --------------------------------- | -------------------------------- |
+| Echo     | `0xec` | > `0x4`                           | Same as data bytes               |
+| Add      | `0xad` | >= `0xc`, must be a multiple of 4 | `0x4` (No carry)                 |
+| Mul      | `0x63` | >= `0xc`, must be a multiple of 4 | `0x4` (Lower 32 of the product)  |
+| Div      | `0x5b` | == `0xc`                          | `0x8` (Quotient, then Remainder) |
+
+I chose these opcdes because they use unique bytes.
+I had difficulty deciding on what kind of response the uart should have, like sending carry bits, the product, etc.
+
+## Step 4 - State machine RTL
+I created the state machine to receive and send bytes in two parts.
+I made the `uart_alu` module to take four bytes to make sure opcodes and lengths are valid.
+I tested the echo command to make sure that this part works.
+I then made the `alu32` module that has a ready valid interface to take an opcode and operands, to make sure that the arithmetic was working properly.
+The rest of the opcodes loads 64 bits into a register first, then waits for the alu to give a valid_o.
+Subsequent operands are loaded into the B register and the previous result is loaded into the A register.
+
+I had trouble here making sure that each state is transitioning properly.
+I originally had the testbench send bytes without stop, but changing it to take breaks in between sends helped me find a bug with the states.
+In the real world bytes won't be sent perfectly on time.
+
+The post-synthesis simulation for the ice40 took me 39 minutes to do 1000 random commands.
+My approach to the fuzz test was to select a random number of operands, and each operand was randomized.
+
+After making sure that the module works with its testbench, I moved onto adding states for the rest of the opcodes.
