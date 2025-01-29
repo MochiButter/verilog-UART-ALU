@@ -18,13 +18,13 @@ module alu32
   } opcode_e;
 
   typedef enum {
-    Idle, AddWait, MulLow, MulHigh, DivLow, DivHigh, DivWait, Done
+    Idle, AddWait, MulWait, DivLow, DivHigh, DivWait, Done
   } alu32_state_e;
 
   alu32_state_e alu32_state_d, alu32_state_q;
 
   logic [0:0] alu_ready_ol, alu_valid_ol;
-  logic [0:0] adder_valid_il, mul_valid_il, mul_sel_il, div_valid_il, result_add_en_l, result_mul_en_l, result_div_en_l;
+  logic [0:0] adder_valid_il, mul_valid_il, div_valid_il, result_add_en_l, result_mul_en_l, result_div_en_l;
   always_comb begin
     alu32_state_d = alu32_state_q;
     alu_ready_ol = 1'b0;
@@ -32,7 +32,6 @@ module alu32
 
     adder_valid_il = 1'b0;
     mul_valid_il = 1'b0;
-    mul_sel_il = 1'b0;
     div_valid_il = 1'b0;
     result_add_en_l = 1'b0;
     result_mul_en_l = 1'b0;
@@ -53,9 +52,8 @@ module alu32
             end
             Mul: begin
               if (mul_ready_o) begin
-                alu32_state_d = MulLow;
+                alu32_state_d = MulWait;
                 mul_valid_il = 1'b1;
-                mul_sel_il = 1'b0;
               end
             end
             Div: begin
@@ -76,20 +74,9 @@ module alu32
           result_add_en_l = 1'b1;
         end
       end
-      // MulLow: gets the lower 32 bits from the multiplier. When the
-      // calculation is finished, selects the upper 32 bits for calculation
-      MulLow: begin
-        mul_sel_il = 1'b0;
-        if (mul_ready_o) begin
-          alu32_state_d = MulHigh;
-          mul_valid_il = 1'b1;
-          mul_sel_il = 1'b1;
-          result_mul_en_l = 1'b1;
-        end
-      end
-      // MulHigh: gets the upper 32 bits of the product. 
-      MulHigh: begin
-        mul_sel_il = 1'b1;
+      // MulWait: the multiplier is busy multiplying the inputs. When finished,
+      // returns the lower 32 bits of the product.
+      MulWait: begin
         if (mul_valid_o) begin
           alu32_state_d = Done;
           result_mul_en_l = 1'b1;
@@ -156,7 +143,7 @@ module alu32
     .opB_i(operand_b_i),
     .signed_opA_i(1'b1),
     .signed_opB_i(1'b1),
-    .gets_high_part_i(mul_sel_il),
+    .gets_high_part_i(1'b0),
 
     .v_o(mul_valid_o),
     .result_o(mul_result_o),
@@ -192,10 +179,8 @@ module alu32
       result_q <= '0;
     end else if (result_add_en_l) begin
       result_q[31:0] <= sum_o;
-    end else if ((alu32_state_q == MulLow) & (result_mul_en_l)) begin
+    end else if ((alu32_state_q == MulWait) & result_mul_en_l) begin
       result_q[31:0] <= mul_result_o;
-    end else if ((alu32_state_q == MulHigh) & (result_mul_en_l)) begin
-      result_q[63:32] <= mul_result_o;
     end else if (result_div_en_l) begin
       result_q[31:0] <= div_result_o;
       result_q[63:32] <= div_remainder_o;

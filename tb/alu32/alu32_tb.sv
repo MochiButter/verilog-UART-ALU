@@ -57,9 +57,10 @@ module alu32_tb();
       
       Multiply: begin
         result_tb = operand_a_i * operand_b_i;
-        if (result_o != result_tb) begin
+        // cut off at 32 bits
+        if (result_o[31:0] != result_tb[31:0]) begin
           correct_l = 1'b0;
-          $display("%s of %h and %h %h (expected %h)", opcode.name(), operand_a_i, operand_b_i, result_o, result_tb);
+          $display("%s of %h and %h %h (expected %h)", opcode.name(), operand_a_i, operand_b_i, result_o[31:0], result_tb[31:0]);
         end
       end
 

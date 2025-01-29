@@ -117,8 +117,10 @@ module uart_alu
               end
             end
             8'had, 8'h63, 8'h5b: begin
-              alu_state_d = RegALoad;
-              op_a_en_l = 1'b1;
+              if (alu32_ready_o) begin
+                alu_state_d = RegALoad;
+                op_a_en_l = 1'b1;
+              end
             end
             default: begin
               alu_state_d = Idle;
@@ -214,7 +216,7 @@ module uart_alu
         endcase
         data_l = alu_data_l;
         // in the case of add send only 32 bits
-        if (opcode_q == 8'had & ready_i & (send_count_q == 3'h3)) begin
+        if (((opcode_q == 8'had) | (opcode_q == 8'h63)) & ready_i & (send_count_q == 3'h3)) begin
           alu_state_d = Idle;
           reg_reset_l = 1'b1;
         end
@@ -393,6 +395,5 @@ module uart_alu
 
   assign ready_o = ready_l;
   assign valid_o = valid_l;
-  //assign data_o = ({8{alu_state_q == Echo}} & data_q) | ({8{alu_state_q == ALUSend}} & alu_data_l);
   assign data_o = data_l;
 endmodule

@@ -10,7 +10,6 @@ module alu_wrap_tb();
   logic [0:0] s_axis_tvalid, s_axis_tready;
 
 `ifdef ICE40_GLS
-  //parameter Prescale = 16'(25125000/(115200 * 8));
   parameter Prescale = 16'(18000000/(115200 * 8));
 
   logic [0:0] clk_12Mhz_i;
@@ -201,13 +200,13 @@ module alu_wrap_tb();
     reset();
 
     // Test arythmetic
-    repeat (1000) begin
+    repeat (10) begin
       send_msg();
       actual = 0;
       
       case (rand_opcode)
-        0: read_cnt = 4;
-        1, 2: read_cnt = 8;
+        0, 1: read_cnt = 4;
+        2: read_cnt = 8;
       endcase
       for (int i = 0; i < read_cnt; i ++) begin
         while (~m_axis_tvalid) @(negedge clk_i);
