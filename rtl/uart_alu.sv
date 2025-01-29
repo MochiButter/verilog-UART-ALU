@@ -71,6 +71,33 @@ module uart_alu
       // a register
       LengthLSB: begin
         if (valid_i) begin
+          case (opcode_q) 
+            8'hec: begin
+              // if echo is only the initial 4 bytes
+              if ({data_i, length_q[7:0]} < 16'h0005) begin
+                alu_state_d = Idle;
+                reg_reset_l = 1'b1;
+              end
+            end
+            8'had, 8'h63: begin
+              // if there are less than 2 operands or not a multiple of 4
+              if ({data_i, length_q[7:0]} < 16'h000c || length_q[1:0] != 2'b00) begin
+                alu_state_d = Idle;
+                reg_reset_l = 1'b1;
+              end
+            end
+            8'h5b: begin
+              // data must be 4 bytes and 2x 32 bit operands
+              if ({data_i, length_q[7:0]} != 16'h000c) begin
+                alu_state_d = Idle;
+                reg_reset_l = 1'b1;
+              end
+            end
+            default: begin
+              alu_state_d = Idle;
+              reg_reset_l = 1'b1;
+            end
+          endcase
           alu_state_d = LengthMSB;
           msb_en_l = 1'b1;
         end
@@ -89,7 +116,7 @@ module uart_alu
                 data_en_l = 1'b1;
               end
             end
-            8'had, 8'h63, 8'h5d: begin
+            8'had, 8'h63, 8'h5b: begin
               alu_state_d = RegALoad;
               op_a_en_l = 1'b1;
             end
@@ -160,7 +187,6 @@ module uart_alu
       end
       ALUWait: begin
         op_valid_l = 1'b1;
-        // TODO depending on if operands are exausted, go to done or load more
         if (alu32_valid_o) begin
           if (byte_count_q == length_q) begin
             alu_state_d = ALUSend;

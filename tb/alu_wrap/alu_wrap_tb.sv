@@ -10,7 +10,8 @@ module alu_wrap_tb();
   logic [0:0] s_axis_tvalid, s_axis_tready;
 
 `ifdef ICE40_GLS
-  parameter Prescale = 16'(25125000/(115200 * 8));
+  //parameter Prescale = 16'(25125000/(115200 * 8));
+  parameter Prescale = 16'(18000000/(115200 * 8));
 
   logic [0:0] clk_12Mhz_i;
   initial begin
@@ -24,7 +25,7 @@ module alu_wrap_tb();
   initial begin
     clk_i = 1'b0;
     forever begin
-      #19.9ns;
+      #27.778ns;
       clk_i = ~clk_i;
     end
   end
@@ -105,29 +106,37 @@ module alu_wrap_tb();
     bytes_send = 16'((4 * rnd_cnt) + 4);
     assert(bytes_send % 4 == 0)
     // choose randomly from opcodes
-    // rand_opcode = {$random()} % 3;
-    rand_opcode = 0;
+    rand_opcode = {$random()} % 3;
+    // rand_opcode = 0;
     case (rand_opcode)
-      0: data_task_header[0] = 8'had;
-      1: data_task_header[0] = 8'h63;
+      0: begin 
+        //$display("Opcode: Add"); 
+        data_task_header[0] = 8'had;
+      end
+      1: begin
+        //$display("Opcode: Mul"); 
+        data_task_header[0] = 8'h63;
+      end
       // divide special case: only two operands
       2: begin
+        //$display("Opcode: Div");
         rnd_cnt = 2;
+        bytes_send = 16'((4 * rnd_cnt) + 4);
         data_task_header[0] = 8'h5b;
       end
       default: begin 
-        $display("Bad opcode");
+        //$display("Bad opcode");
         $finish();
       end
     endcase
     data_task_header[1] = 8'h00;
     data_task_header[2] = bytes_send[7:0];
     data_task_header[3] = bytes_send[15:8];
-    $write("Command: ");
+    //$write("Command: ");
 
     // send the header
     for (int i = 0; i < 4; i ++) begin
-      $write("%h", data_task_header[i]);
+      //$write("%h", data_task_header[i]);
       s_axis_tdata = data_task_header[i];
       s_axis_tvalid = 1'b1;
       while (~s_axis_tready) @(negedge clk_i);
@@ -139,6 +148,7 @@ module alu_wrap_tb();
     for (int i = 0; i < rnd_cnt; i ++) begin
       // genrate random 32 bit number and split into bytes
       rnd_num = $random();
+      //$display("operand %d: %d", i, rnd_num);
       rnd_num_bytes[0] = rnd_num[7:0];
       rnd_num_bytes[1] = rnd_num[15:8];
       rnd_num_bytes[2] = rnd_num[23:16];
@@ -164,7 +174,7 @@ module alu_wrap_tb();
 
       // send operand
       for (int j = 0; j < 4; j ++) begin
-        $write("%h", rnd_num_bytes[j]);
+        //$write("%h", rnd_num_bytes[j]);
         s_axis_tdata = rnd_num_bytes[j];
         s_axis_tvalid = 1'b1;
         while (~s_axis_tready) @(negedge clk_i);
@@ -172,7 +182,7 @@ module alu_wrap_tb();
         @(negedge clk_i);
       end
     end
-    $display("");
+    //$display("");
   end
   endtask
 
@@ -191,7 +201,7 @@ module alu_wrap_tb();
     reset();
 
     // Test arythmetic
-    repeat (10) begin
+    repeat (1000) begin
       send_msg();
       actual = 0;
       
@@ -205,12 +215,12 @@ module alu_wrap_tb();
         @(negedge clk_i);
       end
       case (rand_opcode) 
-        0: begin
-          $display("Expected: %h\nGot:\t %h", expected[31:0], actual[31:0]);
+        0, 1: begin
+          //$display("Expected: %h\nGot:\t %h", expected[31:0], actual[31:0]);
           fail = (expected[31:0] != actual[31:0]);
         end
-        1, 2: begin
-          $display("Expected: %h\nGot:\t %h", expected[63:0], actual[63:0]);
+        2: begin
+          //$display("Expected: %h\nGot:\t %h", expected[63:0], actual[63:0]);
           fail = (expected[63:0] != actual[63:0]);
         end
       endcase
@@ -218,7 +228,7 @@ module alu_wrap_tb();
         $display("\033[0;31mSIM FAILED\033[0m");
         $finish();
       end
-      $display("");
+      //$display("");
       repeat(10) repeat (repeat_cnt) @(negedge clk_i);
     end
 

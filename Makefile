@@ -39,11 +39,11 @@ lint: $(wildcard rtl/*.sv) $(RTL_SRC) $(YOSYS_DATDIR)/ice40/cells_sim.v
 
 build/synth/rtl.sv2v.v: $(RTL_SRC)
 	@mkdir -p build/synth
-	sv2v $^ -w $@ -Ithird_party/basejump_stl/bsg_misc
+	sv2v $^ -w $@ -Ithird_party/basejump_stl/bsg_misc -DBSG_HIDE_FROM_SYNTHESIS
 
 build/synth/sim.sv2v.v build/synth/generic_synth.v: $(SIM_SRC)
 	@mkdir -p build/synth
-	sv2v $(SIM_SRC) -w build/synth/sim.sv2v.v
+	sv2v $(SIM_SRC) -w build/synth/sim.sv2v.v -DBSG_HIDE_FROM_SYNTHESIS
 	yosys -p 'tcl synth/yosys_generic/yosys.tcl' -ql build/synth/generic_synth_v.yslog
 
 gls: include build/sim/$(SIM_TOP)_gls/verilator.vcd #build/sim/$(SIM_TOP)_gls/iverilog.vcd
@@ -62,7 +62,7 @@ build/sim/$(SIM_TOP)_gls/iverilog.vcd: $(SIM_TB) build/synth/generic_synth.v
 
 icesugar_gls: build/sim/icesugar_gls/verilator.vcd #build/sim/icesugar_gls/iverilog.vcd
 
-build/sim/icesugar_gls/verilator.vcd: build/synth/ice40_synth.v $(YOSYS_DATDIR)/ice40/cells_sim.v tb/alu_wrap/alu_wrap_tb.sv third_party/alexforencich_uart/rtl/uart_rx.v
+build/sim/icesugar_gls/verilator.vcd: build/synth/ice40_synth.v $(YOSYS_DATDIR)/ice40/cells_sim.v tb/alu_wrap/alu_wrap_tb.sv third_party/alexforencich_uart/rtl/uart_rx.v third_party/alexforencich_uart/rtl/uart_tx.v
 	@mkdir -p build/sim/icesugar_gls/verilator
 	verilator lint/verilator.vlt -Mdir build/sim/icesugar_gls/verilator $^ -DICE40_GLS -DNO_ICE40_DEFAULT_ASSIGNMENTS --binary -Wno-fatal -f tb/tb.f --top alu_wrap_tb 
 	cd build/sim/icesugar_gls; \
